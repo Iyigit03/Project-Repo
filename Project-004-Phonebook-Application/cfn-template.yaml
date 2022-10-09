@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  CloudFormation Template for Phonebook Application. This template creates Application Load Balancer 
+  with Auto Scaling Group of Amazon Linux 2 (ami-026b57f3c383c2eec) EC2 Instances which host Python Flask Web Application. EC2 instances are placed within WebServerSecurityGroup which allows http (80) connections only from ALBSecurityGroup, and allows tcp(3306) connections only within itself. RDS DB instance is placed within WebServerSecurityGroup so that Database Server can communicate with Web Servers. Application Load Balancer is placed within ALBSecurityGroup which allows http (80) connections from anywhere. WebServerASG Auto Scaling Group is using the WebServerLT Launch Template in order to spin up instances needed. WebServerLT Launch Template is configured to prepare Python Flask environment on EC2, and to deploy Phonebook Application on Flask Server after downloading the app code from Github repository.
+
+Parameters:
+  LatestAmiId :
+    Type : 'AWS::SSM::Parameter::Value'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+
+  MyVPC:
+    Description: VPC Id of your existing account
+    Type: AWS::EC2::VPC::Id
+
+  KeyName:
+    Description: Enter your keypair please.
+    Type: AWS::EC2::KeyPair::KeyName
+
+  Subnets:
+    Description: Please enter your subnets used by Application Load Balancer
+    Type: AWS::EC2::Subnet::Id
+  
+  
+
+Resources:
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTP for Application Load Balancer
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref MyVPC
+
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTP for Flask Web Server and SSH for getting into EC2 # Required
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !GetAtt ALBSecurityGroup.GroupId 
+  VpcId: !Ref MyVPC   
+  
+  WebServerLT:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        BlockDeviceMappings:
+          -
+        DisableApiStop: false
+        DisableApiTermination: false
+        EbsOptimized: false
+        ElasticGpuSpecifications:
+          -
+        ElasticInferenceAccelerators:
+          -
+        ImageId: !Ref LatestAmiId
+        InstanceInitiatedShutdownBehavior: "String"
+        InstanceType: "t2.micro"
+        KernelId: "String"
+        KeyName: !Ref KeyName
+        LicenseSpecifications:
+          -
+        NetworkInterfaces:
+          -
+        RamDiskId: "String"
+        SecurityGroupIds:
+          - WebServerSecurityGroup
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+            - Key: Name
+              Value: !Sub Web Server of ${AWS::StackName} Stack
+                UserData: 
+          Fn::Base64:
+            !Sub
+              - |
+                #! /bin/bash
+                yum update -y
+                yum install python3 -y
+                pip3 install flask
+                pip3 install flask_mysql
+                echo "${MyDBURI}" > /home/ec2-user/dbserver.endpoint
+                TOKEN="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"
+                FOLDER="https://${TOKEN}@raw.githubusercontent.com/serdarcw/phonebookapp/master"
+                curl -s --create-dirs -o "/home/ec2-user/templates/index.html" -L "$FOLDER"/templates/index.html
+                curl -s --create-dirs -o "/home/ec2-user/templates/add-update.html" -L "$FOLDER"/templates/add-update.html
+                curl -s --create-dirs -o "/home/ec2-user/templates/delete.html" -L "$FOLDER"/templates/delete.html
+                curl -s --create-dirs -o "/home/ec2-user/app.py" -L "$FOLDER"/phonebook-app.py
+                python3 /home/ec2-user/app.py
+              - MyDBURI: !GetAtt MyDatabaseServer.Endpoint.Address
+Outputs:
