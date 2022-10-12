@@ -1,0 +1,30 @@
+  KittensCloudfront:
+    Type: "AWS::CloudFront::Distribution" 
+    Properties:
+      DistributionConfig:
+        Aliases:
+        - !Ref KittensDomainName 
+        Comment: Cloudfront Distribution pointing to Kittens S3 bucket
+        DefaultCacheBehavior:
+          AllowedMethods:
+          - GET
+          - HEAD
+          Compress: true
+          ForwardedValues: 
+            QueryString: true
+            Cookies:
+              Forward: none
+          TargetOriginId: KittensOrigin  
+          ViewerProtocolPolicy: allow-all
+        DefaultRootObject: index.html 
+        Enabled: true
+        HttpVersion: 'http2'
+        Origins: 
+        - DomainName: !Select [2, !Split ["/", !GetAtt KittensBucket.WebsiteURL]] 
+          Id: KittensOrigin   
+          CustomOriginConfig: 
+            OriginProtocolPolicy: http-only 
+        PriceClass: PriceClass_All
+        ViewerCertificate:  
+          AcmCertificateArn: !Ref KittensCertificate
+          SslSupportMethod: sni-only 
